@@ -23,6 +23,53 @@ client.on("ready", () => {
 	// TODO Add config loading/saving from file
 });
 
+const commands = {}
+commands.play = function(args, msg, _guild) {
+	if (!args)
+		return msg.channel.sendMessage("No link/search query provided.");
+
+	if (!_guild.general.mchannel)
+		_guild.general.mchannel = msg.channel;
+
+	if (_guild && !_guild.audio.voice) {
+		if (!msg.member.voiceChannel)
+			return msg.reply("Join a voice channel first.");
+
+		_guild.audio.voice = msg.member.voiceChannel;
+	}
+
+	if (!_guild.audio.voice === msg.member.voiceChannel)
+		return msg.channel.sendMessage("You need to be in the JukeBot's voicechannel to queue.");
+
+	const sMsg = msg.channel.sendMessage("Gathering video metadata...");
+	var query = args
+	if (query.lastIndexOf("=") !== -1)
+		query = query.substring(query.lastIndexOf("=") + 1);
+
+	yts.searchVideos(query, 1).then(videos => {
+		return yts.getVideoByID(videos[0].id).then(video2 => {
+			if (video2.durationSeconds > 7201) {
+				msg.channel.sendMessage("Maximum video duration is 2 hours!");
+				setTimeout(() => {msg.delete(); sMsg.delete();}, 50);
+				return;
+			}
+			setTimeout(() => {msg.delete()}, 50)
+			queueSong(video2.id, video2.title, msg.author.id, video2.durationSeconds, _guild)
+			if (_guild.audio.playing)
+				return sMsg.then(m => m.edit(":white_check_mark: " + video2.title + " has been queued by " + msg.author.username))
+			playVideo(msg.guild.id);
+			return sMsg.then(m => m.delete());
+		}).catch((e) => {
+			sMsg.then(m => m.edit(":grey_question: Couldn't fetch the video\n" + e));
+			console.log(e)
+		});
+	}).catch((e) => {
+		sMsg.then(m => m.edit(":negative_squared_cross_mark: No search results found"));
+		console.log(e)
+	});
+}
+commands.p = commands.play
+
 client.on("message", msg => {
 	if (config.blacklist.includes(msg.author.id)) return;
 	if (msg.channel.type === 'dm') return;
@@ -33,46 +80,16 @@ client.on("message", msg => {
 	if (msg.isMentioned(client.user.id))
 		return msg.reply("Use " + guildPrefix + "help for commands.");
 
+
 	if (!msg.content.startsWith(guildPrefix)) return;
 
 	var command = msg.content.substring(guildPrefix.length).toLowerCase().split(" ")[0];
 	var args = msg.content.split(" ").slice(1).join(" ")
 
-	if (command === "play" || command === "p") {
-		if (!args) {
-			return msg.channel.sendMessage("No link/search query provided.");
-		}
-		if (!_guild.general.mchannel) {
-			_guild.general.mchannel = msg.channel;
-		}
-		if (_guild && !_guild.audio.voice) {
-			if (!msg.member.voiceChannel) {
-				return msg.reply("Join a voice channel first.");
-			}
-			_guild.audio.voice = msg.member.voiceChannel;
-		}
-		if (!_guild.audio.voice === msg.member.voiceChannel) {
-			return msg.channel.sendMessage("You need to be in the JukeBot's voicechannel to queue.");
-		}
-		const sMsg = msg.channel.sendMessage("Gathering video metadata...");
-		var query = args
-		if (query.lastIndexOf("=") !== -1) {
-			query = query.substring(query.lastIndexOf("=") + 1);
-		}
-		yts.searchVideos(query, 1).then(videos => {
-			yts.getVideoByID(videos[0].id).then(video2 => {
-				if (video2.durationSeconds > 7201) {msg.channel.sendMessage("Maximum video duration is 2 hours!"); setTimeout(() => {msg.delete(); sMsg.delete();}, 50); return;}
-				setTimeout(() => {msg.delete()}, 50)
-				queueSong(video2.id, video2.title, msg.author.id, video2.durationSeconds, _guild)
-				if (_guild.audio.playing) {
-					sMsg.then(m => m.edit(":white_check_mark: " + video2.title + " has been queued by " + msg.author.username))
-				} else {
-					playVideo(msg.guild.id)
-					sMsg.then(m => m.delete());
-				}
-			}).catch((e) => {sMsg.then(m => m.edit(":grey_question: Couldn't fetch the video\n" + e)); console.log(e)});
-		}).catch((e) => {sMsg.then(m => m.edit(":negative_squared_cross_mark: No search results found")); console.log(e)});
-	}
+	if (commands[command])
+		return commands[command](args, msg, _guild)
+
+	// TODO: everything below here moved to command dispatch style above
 
 	if (command === "undo") {
 		let qItemIndex = _guild.audio.queue.indexOf(_guild.audio.queue.slice(1).reverse().find(o => o.user == msg.author.id))
