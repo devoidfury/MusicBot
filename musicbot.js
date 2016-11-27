@@ -23,7 +23,8 @@ client.on("ready", () => {
 	// TODO Add config loading/saving from file
 });
 
-const commands = {}
+const commands = Object.create(null);
+
 commands.play = function(args, msg, _guild) {
 	if (!args)
 		return msg.channel.sendMessage("No link/search query provided.");
